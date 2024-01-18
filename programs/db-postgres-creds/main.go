@@ -109,7 +109,7 @@ func main() {
 			// expose each user creds in independent secret
 			if cfg.ExportAsSecret {
 				for i, user := range cfg.Users {
-					_, err := secret.NewAWSSecret(ctx, secret.AWSSecretProps{
+					secret, err := secret.NewAWSSecret(ctx, secret.AWSSecretProps{
 						Name:         fmt.Sprintf("pg-%s-user-%s", cfg.Database, user.Username),
 						Type:         secret.DBCreds,
 						InitialValue: cfg.genCredsMap(usersRes, i),
@@ -117,6 +117,9 @@ func main() {
 					if err != nil {
 						return fmt.Errorf("failed to create secret for user %s: %w", user.Username, err)
 					}
+					ctx.Export(fmt.Sprintf("secret-%s", user.Username), pulumi.StringMap{
+						"secretId": secret.Secret.ID(),
+					})
 				}
 			} else {
 				for i, user := range cfg.Users {
