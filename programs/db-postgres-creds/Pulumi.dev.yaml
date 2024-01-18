@@ -2,10 +2,11 @@ encryptionsalt: v1:nzEocOv2oeU=:v1:kYNujbgYZg8DdyFz:Us7RQC+Fp5BSpP4cHDjrcYp6e1Iy
 config:
   pg:database: test-pulumi
   pg:provider:
-    host: 10.43.176.113
+    host: "<INSERTHOSTHERE>"
     port: 5432
     superuserName: postgres
     superuserPassword: "<INSERTPASSWORDHERE>"
   pg:exportAsSecret: false
   pg:users:
-    - test1
+    - username: test1
+      login: true

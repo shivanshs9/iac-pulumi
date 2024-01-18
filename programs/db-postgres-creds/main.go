@@ -14,18 +14,26 @@ type pgProviderArg struct {
 	Host              pulumi.StringInput `json:"host"`
 	SuperuserName     pulumi.StringInput `json:"superuserName"`
 	SuperuserPassword pulumi.StringInput `json:"superuserPassword"`
-	Port              pulumi.IntInput    `json:"port"`
+	Port              int                `json:"port"`
+}
+
+type pgUserArg struct {
+	Username string `json:"username"`
+	Login    bool   `json:"login"`
 }
 
 type pgConfig struct {
-	Database       postgres.PostgresDbProps `json:"database"`
-	Provider       pgProviderArg            `json:"provider"`
-	Users          []string                 `json:"users"`
-	ExportAsSecret bool                     `json:"exportAsSecret"`
+	Database       string        `json:"database"`
+	Provider       pgProviderArg `json:"provider"`
+	Users          []pgUserArg   `json:"users"`
+	ExportAsSecret bool          `json:"exportAsSecret"`
 }
 
 func (cfg *pgConfig) provisionDatabase(ctx *pulumi.Context, provider *postgresql.Provider) (*postgres.PostgresDBResource, error) {
-	res, err := postgres.NewPostgresDatabase(ctx, cfg.Database.Database, cfg.Database, pulumi.Provider(provider))
+	dbProps := postgres.PostgresDbProps{
+		Database: cfg.Database,
+	}
+	res, err := postgres.NewPostgresDatabase(ctx, cfg.Database, dbProps, pulumi.Provider(provider))
 	if err != nil {
 		return res, err
 	}
@@ -35,14 +43,14 @@ func (cfg *pgConfig) provisionDatabase(ctx *pulumi.Context, provider *postgresql
 
 func (cfg *pgConfig) provisionLoginUsers(ctx *pulumi.Context, provider *postgresql.Provider) (*postgres.PostgresUsersResource, error) {
 	userProps := make([]postgres.PostgresUserProps, len(cfg.Users))
-	for i, username := range cfg.Users {
+	for i, user := range cfg.Users {
 		userProps[i] = postgres.PostgresUserProps{
-			Username:   username,
-			Login:      true,
-			AssumeRole: pulumi.Sprintf("%s-rw", cfg.Database.Database),
+			Username:   user.Username,
+			Login:      user.Login,
+			AssumeRole: pulumi.Sprintf("%s-rw", cfg.Database),
 		}
 	}
-	res, err := postgres.NewPostgresUsers(ctx, cfg.Database.Database, userProps, pulumi.Provider(provider))
+	res, err := postgres.NewPostgresUsers(ctx, cfg.Database, userProps, pulumi.Provider(provider))
 	if err != nil {
 		return res, err
 	}
@@ -53,7 +61,7 @@ func (cfg *pgConfig) genCredsMap(usersRes *postgres.PostgresUsersResource, i int
 	return pulumi.StringMap{
 		"username": usersRes.Users[i].Name,
 		"password": usersRes.Users[i].Password.Elem().ToStringOutput(),
-		"database": pulumi.String(cfg.Database.Database),
+		"database": pulumi.String(cfg.Database),
 		"host":     cfg.Provider.Host,
 		"port":     pulumi.Sprintf("%d", cfg.Provider.Port),
 	}
@@ -69,7 +77,7 @@ func main() {
 			Host:     cfg.Provider.Host,
 			Username: cfg.Provider.SuperuserName,
 			Password: cfg.Provider.SuperuserPassword,
-			Port:     cfg.Provider.Port,
+			Port:     pulumi.IntPtr(cfg.Provider.Port),
 		})
 		if err != nil {
 			return err
@@ -97,21 +105,21 @@ func main() {
 			if cfg.ExportAsSecret {
 				for i, user := range cfg.Users {
 					_, err := secret.NewAWSSecret(ctx, secret.AWSSecretProps{
-						Name:         fmt.Sprintf("pg-%s-user-%s", cfg.Database.Database, user),
+						Name:         fmt.Sprintf("pg-%s-user-%s", cfg.Database, user.Username),
 						Type:         secret.DBCreds,
 						InitialValue: cfg.genCredsMap(usersRes, i),
 					})
 					if err != nil {
-						return fmt.Errorf("failed to create secret for user %s: %w", user, err)
+						return fmt.Errorf("failed to create secret for user %s: %w", user.Username, err)
 					}
 				}
 			} else {
 				for i, user := range cfg.Users {
-					ctx.Export(user, cfg.genCredsMap(usersRes, i))
+					ctx.Export(user.Username, cfg.genCredsMap(usersRes, i))
 				}
 			}
 		}
-		ctx.Export("database", pulumi.String(cfg.Database.Database))
+		ctx.Export("database", pulumi.String(cfg.Database))
 
 		return nil
 	})
