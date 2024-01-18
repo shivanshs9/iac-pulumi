@@ -1,0 +1,4 @@
+name: db-postgres-creds
+runtime:
+  name: go
+description: Pulumi Program to create RDS instance

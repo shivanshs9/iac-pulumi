@@ -1,0 +1,6 @@
+go 1.21.5
+
+use (
+	./components
+	./programs/db-postgres-creds
+)
