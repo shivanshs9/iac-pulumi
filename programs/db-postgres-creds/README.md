@@ -15,7 +15,7 @@ This program provisions:
 3. Superuser password needs to be set as secret:
 
 ```bash
-pulumi config set --secret provider:superuserPassword <value>
+pulumi config -s dev set --secret provider:superuserPassword <value>
 ```
 
 4. To Deploy, run:
