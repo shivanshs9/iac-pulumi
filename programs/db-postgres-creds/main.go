@@ -11,10 +11,10 @@ import (
 )
 
 type pgProviderArg struct {
-	Host              pulumi.StringInput `json:"host"`
-	SuperuserName     pulumi.StringInput `json:"superuserName"`
-	SuperuserPassword pulumi.StringInput `json:"superuserPassword"`
-	Port              int                `json:"port"`
+	Host              pulumi.StringInput `required:"" json:"host"`
+	SuperuserName     pulumi.StringInput `required:"" json:"superuserName"`
+	SuperuserPassword pulumi.StringInput `required:"" secret:"superuserPassword"`
+	Port              int                `required:"" json:"port"`
 	DisableSSL        bool               `json:"disableSSL"`
 }
 
@@ -24,10 +24,11 @@ type pgUserArg struct {
 }
 
 type pgConfig struct {
-	Database       string        `json:"database"`
-	Provider       pgProviderArg `json:"provider"`
-	Users          []pgUserArg   `json:"users"`
-	ExportAsSecret bool          `json:"exportAsSecret"`
+	Database       string      `json:"database" required:""`
+	Users          []pgUserArg `json:"users"`
+	ExportAsSecret bool        `json:"exportAsSecret"`
+
+	provider pgProviderArg
 }
 
 func (cfg *pgConfig) provisionDatabase(ctx *pulumi.Context, provider *postgresql.Provider) (*postgres.PostgresDBResource, error) {
@@ -63,8 +64,8 @@ func (cfg *pgConfig) genCredsMap(usersRes *postgres.PostgresUsersResource, i int
 		"username": usersRes.Users[i].Name,
 		"password": usersRes.Users[i].Password.Elem().ToStringOutput(),
 		"database": pulumi.String(cfg.Database),
-		"host":     cfg.Provider.Host,
-		"port":     pulumi.Sprintf("%d", cfg.Provider.Port),
+		"host":     cfg.provider.Host,
+		"port":     pulumi.Sprintf("%d", cfg.provider.Port),
 	}
 }
 
@@ -74,13 +75,17 @@ func main() {
 		if err := utils.ExtractConfig(ctx, "pg", cfg); err != nil {
 			return err
 		}
-		providerArgs := &postgresql.ProviderArgs{
-			Host:     cfg.Provider.Host,
-			Username: cfg.Provider.SuperuserName,
-			Password: cfg.Provider.SuperuserPassword,
-			Port:     pulumi.IntPtr(cfg.Provider.Port),
+		cfg.provider = pgProviderArg{}
+		if err := utils.ExtractConfig(ctx, "provider", &cfg.provider); err != nil {
+			return err
 		}
-		if cfg.Provider.DisableSSL {
+		providerArgs := &postgresql.ProviderArgs{
+			Host:     cfg.provider.Host,
+			Username: cfg.provider.SuperuserName,
+			Password: cfg.provider.SuperuserPassword,
+			Port:     pulumi.IntPtr(cfg.provider.Port),
+		}
+		if cfg.provider.DisableSSL {
 			providerArgs.Sslmode = pulumi.String("disable")
 		}
 		provider, err := postgresql.NewProvider(ctx, "postgresql", providerArgs)

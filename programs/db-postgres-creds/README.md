@@ -8,19 +8,24 @@ This program provisions:
 4. Random Login Password for each user
 5. Expose credentials via Secret Manager (`pg:exportAsSecret` needs to be true)
 
-It also requires the superuser credentials (in `pg:provider`) to be provided for the provider to function. For more details, refer the [dev stack](./Pulumi.dev.yaml).
-
 ## How to deploy?
 
 1. Complete [pre-requisites](/README.md#prerequisites)
-2. Sample stack config is provided in [Pulumi.dev.yaml](./Pulumi.dev.yaml), update the superuser password and Host in it and run:
+2. Sample stack config is provided in [Pulumi.dev.yaml](./Pulumi.dev.yaml), update the DB Host in it.
+3. Superuser password needs to be set as secret:
+
+```bash
+pulumi config set --secret provider:superuserPassword <value>
+```
+
+4. To Deploy, run:
 
 ```bash
 pulumi up -s dev
 ```
 
-3. If `pg:exportAsSecret` is true, creds will be exposed as AWS Secret. Refer to IDs from the output of the program.
-4. If above var is false, then creds are exposed as regular Pulumi output. To print them (along with secret password):
+5. If `pg:exportAsSecret` is true, creds will be exposed as AWS Secret. Refer to IDs from the output of the program.
+6. If above var is false, then creds are exposed as regular Pulumi output. To print them (along with secret password):
 
 ```bash
 pulumi stack output -s dev -j --show-secrets

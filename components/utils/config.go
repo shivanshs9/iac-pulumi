@@ -12,35 +12,73 @@ import (
 
 var ErrJsonEmpty = errors.New("json is empty")
 
-func getConfigString(cfg *config.Config, fieldName string, isRequired bool) string {
-	if isRequired {
-		return cfg.Require(fieldName)
+type configParams struct {
+	fieldName  string
+	isRequired bool
+	isSecret   bool
+}
+
+func getConfigString(cfg *config.Config, params configParams) string {
+	if params.isRequired {
+		return cfg.Require(params.fieldName)
 	} else {
-		return cfg.Get(fieldName)
+		return cfg.Get(params.fieldName)
 	}
 }
 
-func getConfigBool(cfg *config.Config, fieldName string, isRequired bool) bool {
-	if isRequired {
-		return cfg.RequireBool(fieldName)
+func getConfigBool(cfg *config.Config, params configParams) bool {
+	if params.isRequired {
+		return cfg.RequireBool(params.fieldName)
 	} else {
-		return cfg.GetBool(fieldName)
+		return cfg.GetBool(params.fieldName)
 	}
 }
 
-func getConfigInt(cfg *config.Config, fieldName string, isRequired bool) int {
-	if isRequired {
-		return cfg.RequireInt(fieldName)
+func getConfigInt(cfg *config.Config, params configParams) int {
+	if params.isRequired {
+		return cfg.RequireInt(params.fieldName)
 	} else {
-		return cfg.GetInt(fieldName)
+		return cfg.GetInt(params.fieldName)
 	}
 }
 
-func getConfigFloat(cfg *config.Config, fieldName string, isRequired bool) float64 {
-	if isRequired {
-		return cfg.RequireFloat64(fieldName)
+func getConfigFloat(cfg *config.Config, params configParams) float64 {
+	if params.isRequired {
+		return cfg.RequireFloat64(params.fieldName)
 	} else {
-		return cfg.GetFloat64(fieldName)
+		return cfg.GetFloat64(params.fieldName)
+	}
+}
+
+func getSecretString(cfg *config.Config, params configParams) pulumi.StringOutput {
+	if params.isRequired {
+		return cfg.RequireSecret(params.fieldName)
+	} else {
+		return cfg.GetSecret(params.fieldName)
+	}
+}
+
+func getSecretBool(cfg *config.Config, params configParams) pulumi.BoolOutput {
+	if params.isRequired {
+		return cfg.RequireSecretBool(params.fieldName)
+	} else {
+		return cfg.GetSecretBool(params.fieldName)
+	}
+}
+
+func getSecretInt(cfg *config.Config, params configParams) pulumi.IntOutput {
+	if params.isRequired {
+		return cfg.RequireSecretInt(params.fieldName)
+	} else {
+		return cfg.GetSecretInt(params.fieldName)
+	}
+}
+
+func getSecretFloat(cfg *config.Config, params configParams) pulumi.Float64Output {
+	if params.isRequired {
+		return cfg.RequireSecretFloat64(params.fieldName)
+	} else {
+		return cfg.GetSecretFloat64(params.fieldName)
 	}
 }
 
@@ -54,6 +92,12 @@ func loadJsonConfig(cfg *config.Config, fieldName string, isRequired bool, curr 
 	return []byte(cfgJson), nil
 }
 
+// ExtractConfig extracts the pulumi config and populates the object.
+// It requires tags to be set on the struct fields, e.g.:
+// json/config - the name of the config key
+// secret - the name of the secret config key
+// required - whether the config is required
+// The tags are used to map the config to the struct fields.
 func ExtractConfig(ctx *pulumi.Context, namespace string, obj interface{}) error {
 	cfg := config.New(ctx, namespace)
 	// Get the reflect.Value of the object
@@ -73,6 +117,7 @@ func ExtractConfig(ctx *pulumi.Context, namespace string, obj interface{}) error
 		fv := v.Elem().Field(i)
 		ff := t.Field(i)
 
+		isSecret := false
 		// Get the name of the field
 		var fieldName string
 		// Get the tag of the field. If the tag is not empty, use it as the field name
@@ -81,31 +126,55 @@ func ExtractConfig(ctx *pulumi.Context, namespace string, obj interface{}) error
 		} else if tagConfig := ff.Tag.Get("json"); tagConfig != "" {
 			// fallback to json tag
 			fieldName = tagConfig
+		} else if tagConfig := ff.Tag.Get("secret"); tagConfig != "" {
+			fieldName = tagConfig
+			isSecret = true
 		} else {
 			// Skip field if config tag not found
 			continue
 		}
 		_, isRequired := ff.Tag.Lookup("required")
 
+		params := configParams{
+			fieldName:  fieldName,
+			isRequired: isRequired,
+			isSecret:   isSecret,
+		}
 		// Get the value of the field from the config
 		switch fv.Kind() {
 		case reflect.Bool:
-			val := getConfigBool(cfg, fieldName, isRequired && fv.Bool())
+			params.isRequired = isRequired && fv.Bool()
+			val := getConfigBool(cfg, params)
+			if isSecret {
+				return fmt.Errorf("field '%s' is marked as secret but type is not a pulumi output", fieldName)
+			}
 			if val {
 				fv.SetBool(val)
 			}
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			val := getConfigInt(cfg, fieldName, isRequired && fv.Int() == 0)
+			params.isRequired = isRequired && fv.Int() == 0
+			val := getConfigInt(cfg, params)
+			if isSecret {
+				return fmt.Errorf("field '%s' is marked as secret but type is not a pulumi output", fieldName)
+			}
 			if val != 0 {
 				fv.SetInt(int64(val))
 			}
 		case reflect.Float32, reflect.Float64:
-			val := getConfigFloat(cfg, fieldName, isRequired && fv.Float() == 0.0)
+			params.isRequired = isRequired && fv.Float() == 0.0
+			val := getConfigFloat(cfg, params)
+			if isSecret {
+				return fmt.Errorf("field '%s' is marked as secret but type is not a pulumi output", fieldName)
+			}
 			if val != 0.0 {
 				fv.SetFloat(val)
 			}
 		case reflect.String:
-			val := getConfigString(cfg, fieldName, isRequired && fv.String() == "")
+			params.isRequired = isRequired && fv.String() == ""
+			val := getConfigString(cfg, params)
+			if isSecret {
+				return fmt.Errorf("field '%s' is marked as secret but type is not a pulumi output", fieldName)
+			}
 			if val != "" {
 				fv.SetString(val)
 			}
@@ -156,32 +225,51 @@ func ExtractConfig(ctx *pulumi.Context, namespace string, obj interface{}) error
 			switch ff.Type {
 			case reflect.TypeOf((*pulumi.StringInput)(nil)).Elem():
 				curr, ok := fv.Interface().(pulumi.String)
-				val := getConfigString(cfg, fieldName, isRequired && (fv.IsNil() || (ok && curr == "")))
-				if val != "" && (ok || fv.IsNil()) {
-					fv.Set(reflect.ValueOf(pulumi.String(val)))
+				params.isRequired = isRequired && (fv.IsNil() || (ok && curr == ""))
+				if isSecret {
+					fv.Set(reflect.ValueOf(getSecretString(cfg, params)))
+				} else {
+					val := getConfigString(cfg, params)
+					if val != "" && (ok || fv.IsNil()) {
+						fv.Set(reflect.ValueOf(pulumi.String(val)))
+					}
 				}
 				// the other case is that it's a string output so do nothing
 			case reflect.TypeOf((*pulumi.BoolInput)(nil)).Elem():
 				curr, ok := fv.Interface().(pulumi.Bool)
-				val := getConfigBool(cfg, fieldName, isRequired && (fv.IsNil() || (ok && !bool(curr))))
-				if val && (ok || fv.IsNil()) {
-					fv.Set(reflect.ValueOf(pulumi.Bool(val)))
+				params.isRequired = isRequired && (fv.IsNil() || (ok && !bool(curr)))
+				if isSecret {
+					fv.Set(reflect.ValueOf(getSecretBool(cfg, params)))
+				} else {
+					val := getConfigBool(cfg, params)
+					if val && (ok || fv.IsNil()) {
+						fv.Set(reflect.ValueOf(pulumi.Bool(val)))
+					}
 				}
 				// the other case is that it's a bool output so do nothing
 			case reflect.TypeOf((*pulumi.IntInput)(nil)).Elem():
 				curr, ok := fv.Interface().(pulumi.Int)
-				val := getConfigInt(cfg, fieldName, isRequired && (fv.IsNil() || (ok && int(curr) == 0)))
-				if val != 0 && (ok || fv.IsNil()) {
-					fv.Set(reflect.ValueOf(pulumi.Int(val)))
+				params.isRequired = isRequired && (fv.IsNil() || (ok && int(curr) == 0))
+				if isSecret {
+					fv.Set(reflect.ValueOf(getSecretInt(cfg, params)))
+				} else {
+					val := getConfigInt(cfg, params)
+					if val != 0 && (ok || fv.IsNil()) {
+						fv.Set(reflect.ValueOf(pulumi.Int(val)))
+					}
 				}
 				// the other case is that it's a int output so do nothing
 			case reflect.TypeOf((*pulumi.Float64Input)(nil)).Elem():
 				curr, ok := fv.Interface().(pulumi.Float64)
-				val := getConfigFloat(cfg, fieldName, isRequired && (fv.IsNil() || (ok && float64(curr) == 0.0)))
-				if val != 0.0 && (ok || fv.IsNil()) {
-					fv.Set(reflect.ValueOf(pulumi.Float64(val)))
+				params.isRequired = isRequired && (fv.IsNil() || (ok && float64(curr) == 0.0))
+				if isSecret {
+					fv.Set(reflect.ValueOf(getSecretFloat(cfg, params)))
+				} else {
+					val := getConfigFloat(cfg, params)
+					if val != 0.0 && (ok || fv.IsNil()) {
+						fv.Set(reflect.ValueOf(pulumi.Float64(val)))
+					}
 				}
-				// the other case is that it's a float64 output so do nothing
 			}
 		default:
 			return fmt.Errorf("unsupported field name: %s, type: %v", fieldName, fv.Kind())
