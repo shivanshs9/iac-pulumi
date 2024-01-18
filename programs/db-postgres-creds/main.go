@@ -15,6 +15,7 @@ type pgProviderArg struct {
 	SuperuserName     pulumi.StringInput `json:"superuserName"`
 	SuperuserPassword pulumi.StringInput `json:"superuserPassword"`
 	Port              int                `json:"port"`
+	disableSSL        bool               `json:"disableSSL"`
 }
 
 type pgUserArg struct {
@@ -73,12 +74,16 @@ func main() {
 		if err := utils.ExtractConfig(ctx, "pg", cfg); err != nil {
 			return err
 		}
-		provider, err := postgresql.NewProvider(ctx, "postgresql", &postgresql.ProviderArgs{
+		providerArgs := &postgresql.ProviderArgs{
 			Host:     cfg.Provider.Host,
 			Username: cfg.Provider.SuperuserName,
 			Password: cfg.Provider.SuperuserPassword,
 			Port:     pulumi.IntPtr(cfg.Provider.Port),
-		})
+		}
+		if cfg.Provider.disableSSL {
+			providerArgs.Sslmode = pulumi.String("disable")
+		}
+		provider, err := postgresql.NewProvider(ctx, "postgresql", providerArgs)
 		if err != nil {
 			return err
 		}
